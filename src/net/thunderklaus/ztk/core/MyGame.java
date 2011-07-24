@@ -99,16 +99,18 @@ public class MyGame implements Game {
 				.fillRect(0f, 0f, screenWidth, screenHeight);
 
 		world.drawDebugData();
-		
+
 		debugDraw.setFillAlpha(10);
-		float boxSize = 4f;
 		for (Body bodyIter = world.getBodyList(); bodyIter != null; bodyIter = bodyIter
 				.getNext()) {
-			if(bodyIter.getType() != BodyType.DYNAMIC) {
+			if (bodyIter.getType() != BodyType.DYNAMIC) {
 				continue;
 			}
 			Vec2 pos = bodyIter.getPosition();
-			debugDraw.drawCircle(pos, boxSize, Color3f.BLUE);
+			debugDraw.drawCircle(pos, UnitFactory.COHESION_RADIUS * 0.5f,
+					Color3f.BLUE);
+			debugDraw.drawCircle(pos, UnitFactory.ALIGNMENT_RADIUS * 0.5f,
+					Color3f.GREEN);
 		}
 
 		// log().info("paint(" + alpha + ")");
