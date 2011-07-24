@@ -86,6 +86,9 @@ public class MyGame implements Game {
 		// log().info("update(" + delta + ")");
 		for (Body bodyIter = world.getBodyList(); bodyIter != null; bodyIter = bodyIter
 				.getNext()) {
+			if (bodyIter.getType() != BodyType.DYNAMIC) {
+				continue;
+			}
 			UnitFactory.applySwarmAi(bodyIter, debugDraw);
 		}
 
@@ -111,6 +114,9 @@ public class MyGame implements Game {
 					Color3f.BLUE);
 			debugDraw.drawCircle(pos, UnitFactory.ALIGNMENT_RADIUS * 0.5f,
 					Color3f.GREEN);
+			UnitData data = (UnitData) bodyIter.getUserData();
+			debugDraw.drawSegment(pos, pos.add(data.currentRandomDir.mul(20.0f)),
+					Color3f.RED);
 		}
 
 		// log().info("paint(" + alpha + ")");

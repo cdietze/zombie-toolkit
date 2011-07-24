@@ -13,13 +13,15 @@ import org.jbox2d.dynamics.Fixture;
 import org.jbox2d.dynamics.World;
 
 import forplay.core.DebugDrawBox2D;
-import forplay.core.ForPlay;
 
 public class UnitFactory {
 
 	public static final float COHESION_RADIUS = 15f;
+	public static final float COHESION_POWER = 0.01f;
 	public static final float ALIGNMENT_RADIUS = 10f;
-	public static final float RANDOM_POWER = 0.2f;
+	public static final float ALIGNMENT_POWER = 0.05f;
+	public static final float RANDOM_POWER = 0.1f;
+	public static final float RANDOM_JITTER = 0.05f;
 
 	private static final float unitRadius = 0.4f;
 	private static final Random random = new Random();
@@ -30,10 +32,11 @@ public class UnitFactory {
 		bodyDef.position = pos;
 		bodyDef.linearDamping = 0.5f;
 		Body body = world.createBody(bodyDef);
-		ForPlay.log().debug("created body: " + body);
+		body.setUserData(new UnitData());
 		CircleShape shape = new CircleShape();
 		shape.m_radius = unitRadius;
 		body.createFixture(shape, 1.0f);
+		initRandom(body);
 		body.applyLinearImpulse(randomVec2().mulLocal(4.0f),
 				body.getWorldCenter());
 		return body;
@@ -47,24 +50,31 @@ public class UnitFactory {
 		}
 	}
 
-	private static Vec2 randomVec2() {
-		return new Vec2(random.nextFloat() * 2.0f - 1.0f,
-				random.nextFloat() * 2.0f - 1.0f);
-	}
-
 	public static void applySwarmAi(final Body body, DebugDrawBox2D debugDraw) {
 		applyRandom(body);
 		applyCohesion(body);
 		applyAlignment(body);
 	}
 
-	private static void applyRandom(final Body body) {
-		Vec2 vec = randomVec2().mulLocal(RANDOM_POWER);
-		body.applyLinearImpulse(vec, body.getWorldCenter());
+	private static void initRandom(final Body body) {
+		UnitData data = (UnitData) body.getUserData();
+		data.currentRandomDir = randomVec2().mulLocal(RANDOM_POWER);
 	}
 
+	private static void applyRandom(final Body body) {
+		UnitData data = (UnitData) body.getUserData();
+		Vec2 temp = randomVec2Normalized().mulLocal(
+				RANDOM_POWER * RANDOM_JITTER);
+		data.currentRandomDir.mulLocal(1.0f - RANDOM_JITTER).addLocal(temp);
+		Vec2 vec = data.currentRandomDir;
+		float length = vec.length();
+		if (length > RANDOM_POWER) {
+			vec.mulLocal(RANDOM_POWER / length);
+		}
+		body.applyLinearImpulse(vec, body.getWorldCenter());
+	}
+	
 	private static void applyAlignment(final Body body) {
-		final float ALIGNMENT_POWER = 0.05f;
 		final Vec2 alignmentVec = new Vec2();
 		query(body, ALIGNMENT_RADIUS, new MyQueryCallback() {
 			@Override
@@ -88,7 +98,6 @@ public class UnitFactory {
 	}
 
 	private static void applyCohesion(final Body body) {
-		final float COHESION_POWER = 0.01f;
 		final Vec2 vec = new Vec2();
 		query(body, COHESION_RADIUS, new MyQueryCallback() {
 			@Override
@@ -141,7 +150,18 @@ public class UnitFactory {
 		}, aabb);
 	}
 
-	public interface MyQueryCallback {
+	private interface MyQueryCallback {
 		void onMatch(Body otherBody);
+	}
+
+	private static Vec2 randomVec2() {
+		return new Vec2(random.nextFloat() * 2.0f - 1.0f,
+				random.nextFloat() * 2.0f - 1.0f);
+	}
+
+	private static Vec2 randomVec2Normalized() {
+		Vec2 vec = randomVec2();
+		vec.normalize();
+		return vec;
 	}
 }
