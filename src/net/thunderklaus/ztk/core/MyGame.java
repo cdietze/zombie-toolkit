@@ -1,7 +1,6 @@
 package net.thunderklaus.ztk.core;
 
 import org.jbox2d.callbacks.DebugDraw;
-import org.jbox2d.collision.AABB;
 import org.jbox2d.collision.shapes.PolygonShape;
 import org.jbox2d.common.Color3f;
 import org.jbox2d.common.Vec2;
@@ -9,7 +8,6 @@ import org.jbox2d.dynamics.Body;
 import org.jbox2d.dynamics.BodyDef;
 import org.jbox2d.dynamics.BodyType;
 import org.jbox2d.dynamics.World;
-import org.mortbay.log.Log;
 
 import forplay.core.CanvasLayer;
 import forplay.core.Color;
@@ -19,7 +17,7 @@ import forplay.core.Pointer;
 
 import static forplay.core.ForPlay.*;
 
-public class MyGame implements Game {
+public class MyGame implements Game, Constants {
 
 	private static final int screenWidth = 1024;
 	private static final int screenHeight = 768;
@@ -30,6 +28,7 @@ public class MyGame implements Game {
 	private CanvasLayer canvasLayer;
 
 	private World world;
+	@SuppressWarnings("unused")
 	private Body body;
 	private DebugDrawBox2D debugDraw;
 
@@ -91,8 +90,8 @@ public class MyGame implements Game {
 			}
 			UnitFactory.applySwarmAi(bodyIter, debugDraw);
 		}
-
-		world.step(1.0f / 20.0f, 10, 10);
+		final float timeStep = UPDATE_RATE_IN_MS / 1000f;
+		world.step(timeStep, 10, 10);
 	}
 
 	@Override
@@ -110,13 +109,20 @@ public class MyGame implements Game {
 				continue;
 			}
 			Vec2 pos = bodyIter.getPosition();
-			debugDraw.drawCircle(pos, UnitFactory.COHESION_RADIUS * 0.5f,
-					Color3f.BLUE);
-			debugDraw.drawCircle(pos, UnitFactory.ALIGNMENT_RADIUS * 0.5f,
-					Color3f.GREEN);
 			UnitData data = (UnitData) bodyIter.getUserData();
-			debugDraw.drawSegment(pos, pos.add(data.currentRandomDir.mul(20.0f)),
+			debugDraw.drawCircle(pos, UnitFactory.FRIEND_RADIUS * 0.5f,
+					Color3f.GREEN);
+			for (Body friend : data.friends) {
+				Vec2 tmp = friend.getPosition().sub(pos).mul(0.5f)
+						.addLocal(pos);
+				debugDraw.drawSegment(pos, tmp, Color3f.GREEN);
+			}
+			debugDraw.drawSegment(pos, pos.add(data.cohesionDir.mul(20.0f)),
+					Color3f.BLACK);
+			debugDraw.drawSegment(pos, pos.add(data.randomDir.mul(20.0f)),
 					Color3f.RED);
+			debugDraw.drawSegment(pos, pos.add(data.alignmentDir.mul(20.0f)),
+					Color3f.BLUE);
 		}
 
 		// log().info("paint(" + alpha + ")");
@@ -124,7 +130,7 @@ public class MyGame implements Game {
 
 	@Override
 	public int updateRate() {
-		return 1000 / 20;
+		return UPDATE_RATE_IN_MS;
 	}
 
 	private static void createWalls(World world) {

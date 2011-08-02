@@ -1,5 +1,7 @@
 package net.thunderklaus.ztk.core;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Random;
 
 import org.jbox2d.callbacks.QueryCallback;
@@ -13,15 +15,16 @@ import org.jbox2d.dynamics.Fixture;
 import org.jbox2d.dynamics.World;
 
 import forplay.core.DebugDrawBox2D;
+import static net.thunderklaus.ztk.core.Constants.UPDATE_RATE_IN_MS;
 
 public class UnitFactory {
 
-	public static final float COHESION_RADIUS = 15f;
-	public static final float COHESION_POWER = 0.01f;
-	public static final float ALIGNMENT_RADIUS = 10f;
+	public static final float FRIEND_RADIUS = 10f;
+	public static final int FRIEND_UPDATE_INTERVAL_IN_MS = 1000;
+	public static final float COHESION_POWER = 0.05f;
 	public static final float ALIGNMENT_POWER = 0.05f;
-	public static final float RANDOM_POWER = 0.1f;
-	public static final float RANDOM_JITTER = 0.05f;
+	public static final float RANDOM_POWER = 0.05f;
+	public static final int RANDOM_UPDATE_INTERVAL_IN_MS = 1000;
 
 	private static final float unitRadius = 0.4f;
 	private static final Random random = new Random();
@@ -36,7 +39,6 @@ public class UnitFactory {
 		CircleShape shape = new CircleShape();
 		shape.m_radius = unitRadius;
 		body.createFixture(shape, 1.0f);
-		initRandom(body);
 		body.applyLinearImpulse(randomVec2().mulLocal(4.0f),
 				body.getWorldCenter());
 		return body;
@@ -51,70 +53,87 @@ public class UnitFactory {
 	}
 
 	public static void applySwarmAi(final Body body, DebugDrawBox2D debugDraw) {
+		updateFriends(body);
+		updateRandom(body);
 		applyRandom(body);
 		applyCohesion(body);
 		applyAlignment(body);
 	}
 
-	private static void initRandom(final Body body) {
+	private static void updateRandom(final Body body) {
 		UnitData data = (UnitData) body.getUserData();
-		data.currentRandomDir = randomVec2().mulLocal(RANDOM_POWER);
+		data.nextRandomUpdate -= UPDATE_RATE_IN_MS;
+		if (data.nextRandomUpdate > 0) {
+			return;
+		}
+		data.nextRandomUpdate = random.nextInt(RANDOM_UPDATE_INTERVAL_IN_MS)
+				+ RANDOM_UPDATE_INTERVAL_IN_MS / 2;
+		data.randomDir = randomVec2Normalized().mulLocal(RANDOM_POWER);
 	}
 
 	private static void applyRandom(final Body body) {
 		UnitData data = (UnitData) body.getUserData();
-		Vec2 temp = randomVec2Normalized().mulLocal(
-				RANDOM_POWER * RANDOM_JITTER);
-		data.currentRandomDir.mulLocal(1.0f - RANDOM_JITTER).addLocal(temp);
-		Vec2 vec = data.currentRandomDir;
-		float length = vec.length();
-		if (length > RANDOM_POWER) {
-			vec.mulLocal(RANDOM_POWER / length);
-		}
-		body.applyLinearImpulse(vec, body.getWorldCenter());
+		body.applyLinearImpulse(data.randomDir, body.getWorldCenter());
 	}
-	
-	private static void applyAlignment(final Body body) {
-		final Vec2 alignmentVec = new Vec2();
-		query(body, ALIGNMENT_RADIUS, new MyQueryCallback() {
+
+	private static void updateFriends(final Body body) {
+		final UnitData data = (UnitData) body.getUserData();
+		data.nextFriendUpdate -= UPDATE_RATE_IN_MS;
+		if (data.nextFriendUpdate > 0) {
+			return;
+		}
+		data.nextFriendUpdate = random.nextInt(FRIEND_UPDATE_INTERVAL_IN_MS)
+				+ FRIEND_UPDATE_INTERVAL_IN_MS / 2;
+		if (!data.friends.isEmpty()) {
+			if (random.nextInt(100) <= 50)
+				data.friends.remove(0);
+		}
+		if (random.nextInt(100) <= 50)
+			return;
+		final List<Body> candidates = new ArrayList<Body>();
+		query(body, FRIEND_RADIUS, new MyQueryCallback() {
 			@Override
 			public void onMatch(Body otherBody) {
-				Vec2 dir = otherBody.getPosition().sub(body.getPosition());
-				float power = 0.5f * ALIGNMENT_POWER
-						* (ALIGNMENT_RADIUS - dir.length()) / ALIGNMENT_RADIUS;
-				// ForPlay.log().debug("align power: " + power);
-				Vec2 vec = otherBody.getLinearVelocity().mul(power);
-				alignmentVec.addLocal(vec);
-				// dir.normalize();
-				// dir.mulLocal(power);
+				if (!data.friends.contains(otherBody))
+					candidates.add(otherBody);
 			}
 		});
-		float length = alignmentVec.length();
-		if (length > ALIGNMENT_POWER) {
-			alignmentVec.mulLocal(ALIGNMENT_POWER / length);
+		if (!candidates.isEmpty()) {
+			Body newFriend = candidates.get(random.nextInt(candidates.size()));
+			data.friends.add(newFriend);
 		}
-		// ForPlay.log().debug("align vec: " + alignmentVec);
-		body.applyLinearImpulse(alignmentVec, body.getWorldCenter());
+	}
+
+	private static void applyAlignment(final Body body) {
+		final UnitData data = (UnitData) body.getUserData();
+		if (data.friends.isEmpty())
+			return;
+		Vec2 tmp = new Vec2();
+		for (Body friend : data.friends) {
+			Vec2 norm = friend.getLinearVelocity().clone();
+			norm.normalize();
+			tmp.addLocal(norm);
+		}
+		tmp.mulLocal(1f / data.friends.size());
+		tmp.mulLocal(ALIGNMENT_POWER);
+		data.alignmentDir = tmp;
+		body.applyLinearImpulse(tmp, body.getWorldCenter());
 	}
 
 	private static void applyCohesion(final Body body) {
-		final Vec2 vec = new Vec2();
-		query(body, COHESION_RADIUS, new MyQueryCallback() {
-			@Override
-			public void onMatch(Body otherBody) {
-				Vec2 dir = otherBody.getPosition().sub(body.getPosition());
-				float power = 0.5f * COHESION_POWER
-						* (COHESION_RADIUS - dir.length()) / COHESION_RADIUS;
-				dir.normalize();
-				dir.mulLocal(power);
-				vec.addLocal(dir);
-			}
-		});
-		float length = vec.length();
-		if (length > COHESION_POWER) {
-			vec.mulLocal(COHESION_POWER / length);
+		final UnitData data = (UnitData) body.getUserData();
+		if (data.friends.isEmpty())
+			return;
+		Vec2 tmp = new Vec2();
+		for (Body friend : data.friends) {
+			Vec2 dir = friend.getPosition().sub(body.getPosition());
+			dir.normalize();
+			tmp.addLocal(dir);
 		}
-		body.applyLinearImpulse(vec, body.getWorldCenter());
+		tmp.mulLocal(1f / data.friends.size());
+		tmp.mulLocal(COHESION_POWER);
+		data.cohesionDir = tmp;
+		body.applyLinearImpulse(tmp, body.getWorldCenter());
 	}
 
 	private static void query(final Body body, final float radius,
